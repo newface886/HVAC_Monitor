@@ -1,4 +1,5 @@
 using HVAC.EnergyMonitor.Modules;
+using HVAC.EnergyMonitor.Views;
 using Prism.Ioc;
 using Prism.Modularity;
 using Prism.Unity;
@@ -15,7 +16,12 @@ public class Bootstrapper : PrismBootstrapper
 
     protected override void RegisterTypes(IContainerRegistry containerRegistry)
     {
-        // Core services registered in CoreModule
+        containerRegistry.RegisterForNavigation<DashboardView>();
+        containerRegistry.RegisterForNavigation<DeviceConfigView>();
+        containerRegistry.RegisterForNavigation<PointConfigView>();
+        containerRegistry.RegisterForNavigation<HistoryTrendView>();
+        containerRegistry.RegisterForNavigation<AlarmView>();
+        containerRegistry.RegisterForNavigation<EnergyReportView>();
     }
 
     protected override void ConfigureModuleCatalog(IModuleCatalog moduleCatalog)
