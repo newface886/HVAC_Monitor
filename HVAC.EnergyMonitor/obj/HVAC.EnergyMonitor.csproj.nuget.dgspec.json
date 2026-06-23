@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "d:\\study\\623WPFstudy\\HVAC.EnergyMonitor\\HVAC.EnergyMonitor.csproj": {}
+    "D:\\study\\623WPFstudy\\HVAC.EnergyMonitor\\HVAC.EnergyMonitor.csproj": {}
   },
   "projects": {
-    "d:\\study\\623WPFstudy\\HVAC.EnergyMonitor\\HVAC.EnergyMonitor.csproj": {
+    "D:\\study\\623WPFstudy\\HVAC.EnergyMonitor\\HVAC.EnergyMonitor.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "d:\\study\\623WPFstudy\\HVAC.EnergyMonitor\\HVAC.EnergyMonitor.csproj",
+        "projectUniqueName": "D:\\study\\623WPFstudy\\HVAC.EnergyMonitor\\HVAC.EnergyMonitor.csproj",
         "projectName": "HVAC.EnergyMonitor",
-        "projectPath": "d:\\study\\623WPFstudy\\HVAC.EnergyMonitor\\HVAC.EnergyMonitor.csproj",
+        "projectPath": "D:\\study\\623WPFstudy\\HVAC.EnergyMonitor\\HVAC.EnergyMonitor.csproj",
         "packagesPath": "C:\\Users\\fang rui\\.nuget\\packages\\",
-        "outputPath": "d:\\study\\623WPFstudy\\HVAC.EnergyMonitor\\obj\\",
+        "outputPath": "D:\\study\\623WPFstudy\\HVAC.EnergyMonitor\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
