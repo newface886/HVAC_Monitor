@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c ' *)",
+      "Bash(python -c \"import sklearn; print\\('sklearn:', sklearn.__version__\\); import xgboost; print\\('xgboost:', xgboost.__version__\\)\")",
+      "Bash(python -c \"import joblib; print\\(joblib.__version__\\)\")",
+      "Bash(python -X utf8 scripts/train_power_models.py)",
+      "Bash(python -u -X utf8 src/eval_mamba_sac.py --model models/Mamba_SAC_v9_42/mamba_sac_final.pth --config configs/default.yaml --episodes 5 --seed 42)",
+      "Bash(python -u -X utf8 src/world_model/train_temperature.py --epochs 100)",
+      "Bash(python -u -X utf8 src/world_model/evaluate_model.py)",
+      "Bash(python -X utf8 -c \"import torch; print\\(f'CUDA available: {torch.cuda.is_available\\(\\)}'\\); print\\(f'Device: {torch.cuda.get_device_name\\(0\\) if torch.cuda.is_available\\(\\) else \\\\\"CPU\\\\\"}'\\)\")",
+      "Bash(\"C:/Users/fang rui/.conda/envs/pytorch_env/python.exe\" -c \"import torch; print\\(f'PyTorch: {torch.__version__}'\\); print\\(f'CUDA: {torch.cuda.is_available\\(\\)}'\\); print\\(f'GPU: {torch.cuda.get_device_name\\(0\\)}'\\)\")",
+      "Bash(\"C:/Users/fang rui/.conda/envs/pytorch_env/python.exe\" -u src/train_world_mamba_sac.py --steps 20000 --seed 42 --name WorldMambaSAC)",
+      "Bash('C:/Users/fang rui/.conda/envs/pytorch_env/python.exe' -c ' *)",
+      "Bash(python -X utf8 -c ' *)",
+      "Bash(\"C:/Users/fang rui/.conda/envs/pytorch_env/python.exe\" -u src/train_mamba_sac.py --steps 20000 --seed 42 --name MambaSAC)",
+      "Bash(\"C:/Users/fang rui/.conda/envs/pytorch_env/python.exe\" -u src/train_gru_ppo.py --seed 42 --name GRU_PPO)",
+      "Bash(\"C:/Users/fang rui/.conda/envs/pytorch_env/python.exe\" -u scripts/evaluate_all.py --methods mamba_sac gru_ppo --seeds 42 --episodes 5)",
+      "Bash(\"C:/Users/fang rui/.conda/envs/pytorch_env/python.exe\" -u scripts/evaluate_all.py --methods MambaSAC GRU_PPO --seeds 42 --episodes 5)",
+      "Bash(\"C:/Users/fang rui/.conda/envs/pytorch_env/python.exe\" -u scripts/train_rule_baseline.py --seed 42 --name Rule)",
+      "Bash(\"C:/Users/fang rui/.conda/envs/pytorch_env/python.exe\" -u scripts/evaluate_all.py --methods MambaSAC GRU_PPO rule --seeds 42 --episodes 5)",
+      "Bash(\"C:/Users/fang rui/.conda/envs/pytorch_env/python.exe\" scripts/plot_training.py)",
+      "Bash(ls experiments/src/train_world_mamba_sac.py)",
+      "Bash(ls src/train_world_mamba_sac.py)",
+      "Bash(python scripts/run_ablation.py --seeds 42 --steps 3000)",
+      "Bash(python scripts/evaluate_all.py --methods MambaSAC_quick GRU_PPO_quick SAC_MLP_quick WorldMambaSAC_quick --seeds 42 --episodes 3)",
+      "Bash(python scripts/statistical_analysis.py)",
+      "Bash(python scripts/evaluate_all.py --methods MambaSAC_quick GRU_PPO_quick SAC_MLP_quick WorldMambaSAC_quick --seeds 42 --episodes 2)",
+      "Bash(\"C:/Users/fang rui/.conda/envs/pytorch_env/python.exe\" scripts/train_ddpg_baseline.py --config configs/default.yaml --steps 80000 --seed 42 --name DDPG)",
+      "Bash(\"C:/Users/fang rui/.conda/envs/pytorch_env/python.exe\" scripts/evaluate_all.py --methods DDPG --seeds 42 --episodes 10)",
+      "Bash(python3 *)",
+      "Bash(C:\\\\Users\\\\fang rui\\\\.conda\\\\envs\\\\pytorch_env\\\\python.exe *)"
+    ]
+  }
+}
