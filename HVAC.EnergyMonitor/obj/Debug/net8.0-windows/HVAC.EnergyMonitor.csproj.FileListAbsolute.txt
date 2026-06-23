@@ -164,3 +164,5 @@ d:\study\623WPFstudy\HVAC.EnergyMonitor\obj\Debug\net8.0-windows\refint\HVAC.Ene
 d:\study\623WPFstudy\HVAC.EnergyMonitor\obj\Debug\net8.0-windows\HVAC.EnergyMonitor.pdb
 d:\study\623WPFstudy\HVAC.EnergyMonitor\obj\Debug\net8.0-windows\HVAC.EnergyMonitor.genruntimeconfig.cache
 d:\study\623WPFstudy\HVAC.EnergyMonitor\obj\Debug\net8.0-windows\ref\HVAC.EnergyMonitor.dll
+d:\study\623WPFstudy\HVAC.EnergyMonitor\obj\Debug\net8.0-windows\Design\Styles.baml
+d:\study\623WPFstudy\HVAC.EnergyMonitor\obj\Debug\net8.0-windows\App.baml
