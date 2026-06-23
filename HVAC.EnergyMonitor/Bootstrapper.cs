@@ -1,5 +1,6 @@
 using HVAC.EnergyMonitor.Modules;
 using HVAC.EnergyMonitor.Views;
+using NLog;
 using Prism.Ioc;
 using Prism.Modularity;
 using Prism.Unity;
@@ -16,6 +17,8 @@ public class Bootstrapper : PrismBootstrapper
 
     protected override void RegisterTypes(IContainerRegistry containerRegistry)
     {
+        containerRegistry.RegisterInstance<ILogger>(LogManager.GetCurrentClassLogger());
+
         containerRegistry.RegisterForNavigation<DashboardView>();
         containerRegistry.RegisterForNavigation<DeviceConfigView>();
         containerRegistry.RegisterForNavigation<PointConfigView>();

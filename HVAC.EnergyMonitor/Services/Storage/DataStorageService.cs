@@ -1,5 +1,6 @@
 using HVAC.EnergyMonitor.Infrastructure.Repository;
 using HVAC.EnergyMonitor.Models.Entities;
+using NLog;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -11,13 +12,15 @@ namespace HVAC.EnergyMonitor.Services.Storage;
 public class DataStorageService : IDataStorageService, IDisposable
 {
     private readonly IUnitOfWork _unitOfWork;
+    private readonly ILogger _logger;
     private readonly ConcurrentQueue<PointValue> _buffer = new();
     private readonly Timer _flushTimer;
     private const int MaxBatchSize = 100;
 
-    public DataStorageService(IUnitOfWork unitOfWork)
+    public DataStorageService(IUnitOfWork unitOfWork, ILogger logger)
     {
         _unitOfWork = unitOfWork;
+        _logger = logger;
         _flushTimer = new Timer(_ => _ = FlushAsync(), null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
     }
 
@@ -48,7 +51,7 @@ public class DataStorageService : IDataStorageService, IDisposable
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[DataStorageService] Flush failed: {ex.Message}");
+            _logger.Error(ex, "[DataStorageService] Flush failed: {Message}", ex.Message);
         }
     }
 

@@ -7,6 +7,7 @@ using HVAC.EnergyMonitor.Services.Cache;
 using HVAC.EnergyMonitor.Services.Communication;
 using HVAC.EnergyMonitor.Services.Storage;
 using Microsoft.EntityFrameworkCore;
+using NLog;
 using Prism.Events;
 using System;
 using System.Collections.Generic;
@@ -22,6 +23,7 @@ public class DataAcquisitionService : IDataAcquisitionService
     private readonly IPointValueCache _cache;
     private readonly IDataStorageService _storage;
     private readonly IEventAggregator _eventAggregator;
+    private readonly ILogger _logger;
     private readonly Dictionary<int, ICommunicationService> _communicationServices = new();
     private CancellationTokenSource? _cts;
     private Task? _runningTask;
@@ -32,12 +34,14 @@ public class DataAcquisitionService : IDataAcquisitionService
         AppDbContext context,
         IPointValueCache cache,
         IDataStorageService storage,
-        IEventAggregator eventAggregator)
+        IEventAggregator eventAggregator,
+        ILogger logger)
     {
         _context = context;
         _cache = cache;
         _storage = storage;
         _eventAggregator = eventAggregator;
+        _logger = logger;
     }
 
     public async Task StartAsync(CancellationToken ct = default)
@@ -88,7 +92,7 @@ public class DataAcquisitionService : IDataAcquisitionService
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[DataAcquisitionService] {ex.Message}");
+                _logger.Error(ex, "[DataAcquisitionService] {Message}", ex.Message);
             }
 
             await Task.Delay(1000, ct);
@@ -134,7 +138,7 @@ public class DataAcquisitionService : IDataAcquisitionService
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[ProcessDevice] Point {point.Name}: {ex.Message}");
+                _logger.Warn(ex, "[ProcessDevice] Point {PointName}: {Message}", point.Name, ex.Message);
             }
         }
     }

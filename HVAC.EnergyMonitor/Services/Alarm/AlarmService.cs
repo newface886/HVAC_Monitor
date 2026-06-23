@@ -3,6 +3,7 @@ using HVAC.EnergyMonitor.Models.Entities;
 using HVAC.EnergyMonitor.Models.Enums;
 using HVAC.EnergyMonitor.Services.Cache;
 using Microsoft.EntityFrameworkCore;
+using NLog;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -15,11 +16,13 @@ public class AlarmService : IAlarmService
     public event EventHandler<AlarmEventArgs>? AlarmTriggered;
 
     private readonly IUnitOfWork _unitOfWork;
+    private readonly ILogger _logger;
     private readonly HashSet<string> _activeAlarms = new();
 
-    public AlarmService(IUnitOfWork unitOfWork)
+    public AlarmService(IUnitOfWork unitOfWork, ILogger logger)
     {
         _unitOfWork = unitOfWork;
+        _logger = logger;
     }
 
     public async Task CheckAsync(PointValueCacheItem value)
