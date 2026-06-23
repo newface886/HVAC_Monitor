@@ -1,0 +1,27 @@
+<Window x:Class="HVAC.EnergyMonitor.Views.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:prism="http://prismlibrary.com/"
+        Title="HVAC 能源监控平台" Height="800" Width="1200"
+        WindowStartupLocation="CenterScreen">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="220"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <Border Grid.Column="0" Background="#1e1e2f">
+            <StackPanel Margin="10">
+                <TextBlock Text="HVAC 能源监控" Foreground="White" FontSize="18" FontWeight="Bold" Margin="0,10,0,20"/>
+                <Button Content="实时监控" Command="{Binding NavigateCommand}" CommandParameter="DashboardView" Margin="0,5" Padding="10" Background="#2d2d44" Foreground="White" BorderThickness="0"/>
+                <Button Content="设备管理" Command="{Binding NavigateCommand}" CommandParameter="DeviceConfigView" Margin="0,5" Padding="10" Background="#2d2d44" Foreground="White" BorderThickness="0"/>
+                <Button Content="点位管理" Command="{Binding NavigateCommand}" CommandParameter="PointConfigView" Margin="0,5" Padding="10" Background="#2d2d44" Foreground="White" BorderThickness="0"/>
+                <Button Content="历史趋势" Command="{Binding NavigateCommand}" CommandParameter="HistoryTrendView" Margin="0,5" Padding="10" Background="#2d2d44" Foreground="White" BorderThickness="0"/>
+                <Button Content="报警管理" Command="{Binding NavigateCommand}" CommandParameter="AlarmView" Margin="0,5" Padding="10" Background="#2d2d44" Foreground="White" BorderThickness="0"/>
+                <Button Content="能耗报表" Command="{Binding NavigateCommand}" CommandParameter="EnergyReportView" Margin="0,5" Padding="10" Background="#2d2d44" Foreground="White" BorderThickness="0"/>
+            </StackPanel>
+        </Border>
+
+        <ContentControl Grid.Column="1" prism:RegionManager.RegionName="MainRegion" Margin="10"/>
+    </Grid>
+</Window>
