@@ -17,31 +17,33 @@ using System.Threading.Tasks;
 
 namespace HVAC.EnergyMonitor.Services.Acquisition;
 
-public class DataAcquisitionService : IDataAcquisitionService
+public class DataAcquisitionService : IDataAcquisitionService, IAsyncDisposable, IDisposable
 {
-    private readonly AppDbContext _context;
+    private readonly IDbContextFactory<AppDbContext> _dbContextFactory;
     private readonly IPointValueCache _cache;
     private readonly IDataStorageService _storage;
     private readonly IEventAggregator _eventAggregator;
-    private readonly ILogger _logger;
+    private readonly ICommunicationServiceFactory _communicationServiceFactory;
+    private static readonly ILogger Logger = LogManager.GetCurrentClassLogger();
     private readonly Dictionary<int, ICommunicationService> _communicationServices = new();
     private CancellationTokenSource? _cts;
     private Task? _runningTask;
+    private bool _disposed;
 
     public bool IsRunning { get; private set; }
 
     public DataAcquisitionService(
-        AppDbContext context,
+        IDbContextFactory<AppDbContext> dbContextFactory,
         IPointValueCache cache,
         IDataStorageService storage,
         IEventAggregator eventAggregator,
-        ILogger logger)
+        ICommunicationServiceFactory communicationServiceFactory)
     {
-        _context = context;
+        _dbContextFactory = dbContextFactory;
         _cache = cache;
         _storage = storage;
         _eventAggregator = eventAggregator;
-        _logger = logger;
+        _communicationServiceFactory = communicationServiceFactory;
     }
 
     public async Task StartAsync(CancellationToken ct = default)
@@ -51,7 +53,7 @@ public class DataAcquisitionService : IDataAcquisitionService
         _cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         IsRunning = true;
         _runningTask = RunAsync(_cts.Token);
-        await Task.CompletedTask;
+        await Task.CompletedTask.ConfigureAwait(false);
     }
 
     public async Task StopAsync(CancellationToken ct = default)
@@ -61,14 +63,14 @@ public class DataAcquisitionService : IDataAcquisitionService
         _cts?.Cancel();
         if (_runningTask != null)
         {
-            try { await _runningTask.WaitAsync(ct); }
+            try { await _runningTask.WaitAsync(ct).ConfigureAwait(false); }
             catch (OperationCanceledException) { }
         }
 
         foreach (var service in _communicationServices.Values)
         {
-            try { await service.DisconnectAsync(ct); }
-            catch { }
+            try { await service.DisconnectAsync(ct).ConfigureAwait(false); }
+            catch (Exception ex) { Logger.Warn(ex, "[DataAcquisitionService] DisconnectAsync failed during Stop"); }
         }
         _communicationServices.Clear();
         IsRunning = false;
@@ -80,22 +82,35 @@ public class DataAcquisitionService : IDataAcquisitionService
         {
             try
             {
-                var devices = await _context.Devices
+                using var context = _dbContextFactory.CreateDbContext();
+                var devices = await context.Devices
+                    .AsNoTracking()
                     .Where(d => d.IsEnabled)
                     .Include(d => d.Points.Where(p => p.IsEnabled))
-                    .ToListAsync(ct);
+                    .ToListAsync(ct).ConfigureAwait(false);
 
                 foreach (var device in devices)
                 {
-                    await ProcessDeviceAsync(device, ct);
+                    await ProcessDeviceAsync(device, ct).ConfigureAwait(false);
                 }
+            }
+            catch (OperationCanceledException)
+            {
+                // normal shutdown
             }
             catch (Exception ex)
             {
-                _logger.Error(ex, "[DataAcquisitionService] {Message}", ex.Message);
+                Logger.Error(ex, "[DataAcquisitionService] {Message}", ex.Message);
             }
 
-            await Task.Delay(1000, ct);
+            try
+            {
+                await Task.Delay(1000, ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
         }
     }
 
@@ -104,7 +119,7 @@ public class DataAcquisitionService : IDataAcquisitionService
         var service = GetOrCreateCommunicationService(device);
         if (!service.IsConnected)
         {
-            await service.ConnectAsync(ct);
+            await service.ConnectAsync(ct).ConfigureAwait(false);
         }
 
         if (!service.IsConnected) return;
@@ -116,9 +131,9 @@ public class DataAcquisitionService : IDataAcquisitionService
             {
                 ushort[] raw;
                 if (point.FunctionCode == 3)
-                    raw = await service.ReadHoldingRegistersAsync(device.SlaveAddress, point.RegisterAddress, GetRegisterCount(point.DataType), ct);
+                    raw = await service.ReadHoldingRegistersAsync(device.SlaveAddress, point.RegisterAddress, GetRegisterCount(point.DataType), ct).ConfigureAwait(false);
                 else
-                    raw = await service.ReadInputRegistersAsync(device.SlaveAddress, point.RegisterAddress, GetRegisterCount(point.DataType), ct);
+                    raw = await service.ReadInputRegistersAsync(device.SlaveAddress, point.RegisterAddress, GetRegisterCount(point.DataType), ct).ConfigureAwait(false);
 
                 double engineeringValue = ConvertToEngineeringValue(raw, point);
                 var cacheItem = new PointValueCacheItem(point.Id, engineeringValue, DateTime.Now, Quality.Good);
@@ -133,12 +148,12 @@ public class DataAcquisitionService : IDataAcquisitionService
                         Value = engineeringValue,
                         Timestamp = DateTime.Now,
                         Quality = Quality.Good
-                    });
+                    }).ConfigureAwait(false);
                 }
             }
             catch (Exception ex)
             {
-                _logger.Warn(ex, "[ProcessDevice] Point {PointName}: {Message}", point.Name, ex.Message);
+                Logger.Warn(ex, "[ProcessDevice] Point {PointName}: {Message}", point.Name, ex.Message);
             }
         }
     }
@@ -148,13 +163,7 @@ public class DataAcquisitionService : IDataAcquisitionService
         if (_communicationServices.TryGetValue(device.Id, out var existing))
             return existing;
 
-        ICommunicationService service = device.ProtocolType switch
-        {
-            ProtocolType.Simulator => new SimulatorCommunicationService(),
-            ProtocolType.ModbusTCP => new ModbusTcpCommunicationService(),
-            _ => new SimulatorCommunicationService()
-        };
-
+        var service = _communicationServiceFactory.Create(device.ProtocolType, device);
         _communicationServices[device.Id] = service;
         return service;
     }
@@ -178,5 +187,69 @@ public class DataAcquisitionService : IDataAcquisitionService
             _ => raw[0]
         };
         return rawValue * point.Scale + point.Offset;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        try
+        {
+            await StopAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "[DataAcquisitionService] DisposeAsync StopAsync failed: {Message}", ex.Message);
+        }
+
+        _cts?.Dispose();
+        _runningTask?.Dispose();
+
+        foreach (var service in _communicationServices.Values)
+        {
+            if (service is IAsyncDisposable asyncDisposable)
+            {
+                try { await asyncDisposable.DisposeAsync().ConfigureAwait(false); }
+                catch (Exception ex) { Logger.Warn(ex, "[DataAcquisitionService] Communication service async dispose failed"); }
+            }
+            else if (service is IDisposable disposable)
+            {
+                try { disposable.Dispose(); }
+                catch (Exception ex) { Logger.Warn(ex, "[DataAcquisitionService] Communication service dispose failed in DisposeAsync"); }
+            }
+        }
+        _communicationServices.Clear();
+
+        GC.SuppressFinalize(this);
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        // 同步路径：不阻塞等待 StopAsync（避免 sync-over-async 死锁）
+        try { _cts?.Cancel(); }
+        catch (ObjectDisposedException) { }
+
+        foreach (var service in _communicationServices.Values)
+        {
+            if (service is IDisposable disposable)
+            {
+                try { disposable.Dispose(); }
+                catch (Exception ex) { Logger.Warn(ex, "[DataAcquisitionService] Communication service dispose failed in Dispose"); }
+            }
+        }
+        _communicationServices.Clear();
+
+        // 给后台任务有限的清理时间，不无限等待
+        try { _runningTask?.Wait(TimeSpan.FromSeconds(2)); }
+        catch (Exception ex) { Logger.Warn(ex, "[DataAcquisitionService] RunningTask wait timeout during Dispose"); }
+
+        _cts?.Dispose();
+        _runningTask?.Dispose();
+
+        GC.SuppressFinalize(this);
     }
 }

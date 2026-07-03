@@ -3,6 +3,7 @@ using HVAC.EnergyMonitor.Models.Enums;
 using HVAC.EnergyMonitor.Services.Cache;
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace HVAC.EnergyMonitor.Services.Alarm;
@@ -10,9 +11,9 @@ namespace HVAC.EnergyMonitor.Services.Alarm;
 public interface IAlarmService
 {
     event EventHandler<AlarmEventArgs>? AlarmTriggered;
-    Task CheckAsync(PointValueCacheItem value);
-    Task<IEnumerable<AlarmRecord>> GetActiveAlarmsAsync();
-    Task AcknowledgeAsync(int alarmRecordId);
+    Task CheckAsync(PointValueCacheItem value, CancellationToken ct = default);
+    Task<IEnumerable<AlarmRecord>> GetActiveAlarmsAsync(CancellationToken ct = default);
+    Task AcknowledgeAsync(int alarmRecordId, CancellationToken ct = default);
 }
 
 public class AlarmEventArgs : EventArgs

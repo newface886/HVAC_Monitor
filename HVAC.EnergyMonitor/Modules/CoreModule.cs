@@ -1,50 +1,37 @@
 using HVAC.EnergyMonitor.Infrastructure.DbContext;
-using HVAC.EnergyMonitor.Infrastructure.Repository;
-using HVAC.EnergyMonitor.Services.Acquisition;
-using HVAC.EnergyMonitor.Services.Alarm;
-using HVAC.EnergyMonitor.Services.Cache;
-using HVAC.EnergyMonitor.Services.Communication;
-using HVAC.EnergyMonitor.Services.Report;
-using HVAC.EnergyMonitor.Services.Storage;
 using Microsoft.EntityFrameworkCore;
+using NLog;
 using Prism.Ioc;
 using Prism.Modularity;
+using System;
 
 namespace HVAC.EnergyMonitor.Modules;
 
 public class CoreModule : IModule
 {
+    private static readonly ILogger Logger = LogManager.GetCurrentClassLogger();
+
     public void OnInitialized(IContainerProvider containerProvider)
     {
+        try
+        {
+            using var context = containerProvider.Resolve<IDbContextFactory<AppDbContext>>().CreateDbContext();
+            context.Database.EnsureCreated();
+            SeedData(context);
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "[CoreModule] 数据库初始化失败，应用将以降级模式启动: {Message}", ex.Message);
+        }
     }
 
     public void RegisterTypes(IContainerRegistry containerRegistry)
     {
-        // DbContext
-        var connectionString = "Data Source=hvac_energy_monitor.db";
-        containerRegistry.RegisterSingleton<AppDbContext>(() =>
-        {
-            var options = new DbContextOptionsBuilder<AppDbContext>()
-                .UseSqlite(connectionString)
-                .Options;
-            var context = new AppDbContext(options);
-            context.Database.EnsureCreated();
-            SeedData(context);
-            return context;
-        });
-
-        // Repository / UnitOfWork
-        containerRegistry.RegisterSingleton<IUnitOfWork, UnitOfWork>();
-
-        // Services
-        containerRegistry.RegisterSingleton<IPointValueCache, PointValueCache>();
-        containerRegistry.RegisterSingleton<IDataStorageService, DataStorageService>();
-        containerRegistry.RegisterSingleton<IAlarmService, AlarmService>();
-        containerRegistry.RegisterSingleton<IEnergyReportService, EnergyReportService>();
-        containerRegistry.RegisterSingleton<IDataAcquisitionService, DataAcquisitionService>();
+        // 服务注册已移至 Bootstrapper.RegisterTypes
+        // 原因：Prism 9 模块加载在 Shell 创建之后，导致 MainWindowViewModel 解析时服务未注册
     }
 
-    private static void SeedData(AppDbContext context)
+    private static void SeedData(Infrastructure.DbContext.AppDbContext context)
     {
         if (context.Devices.Any()) return;
 

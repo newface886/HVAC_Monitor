@@ -1,7 +1,102 @@
 <UserControl x:Class="HVAC.EnergyMonitor.Views.DashboardView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:scottplot="clr-namespace:ScottPlot.WPF;assembly=ScottPlot.WPF">
     <Grid>
-        <TextBlock Text="实时监控" FontSize="24" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Grid Grid.Row="0" Margin="0,0,0,16">
+            <TextBlock Text="实时监控" Style="{StaticResource PageTitleStyle}"/>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Border Style="{StaticResource StatusBadgeStyle}" Background="{StaticResource BrushPrimaryLight}" Margin="0,0,8,0">
+                    <StackPanel Orientation="Horizontal">
+                        <Ellipse Width="8" Height="8" Fill="{StaticResource BrushSuccess}" Margin="0,0,6,0"/>
+                        <TextBlock Text="{Binding AcquisitionStatus}" Foreground="{StaticResource BrushPrimary}" FontWeight="SemiBold"/>
+                    </StackPanel>
+                </Border>
+                <Border Style="{StaticResource StatusBadgeStyle}" Background="{StaticResource BrushPrimaryLight}">
+                    <StackPanel Orientation="Horizontal">
+                        <Ellipse Width="8" Height="8" Fill="{StaticResource BrushSuccess}" Margin="0,0,6,0"/>
+                        <TextBlock Text="{Binding OnlineStatus}" Foreground="{StaticResource BrushPrimary}" FontWeight="SemiBold"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </Grid>
+
+        <!-- KPI Cards -->
+        <ItemsControl Grid.Row="1" ItemsSource="{Binding PointValues}" Margin="0,0,0,16">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <UniformGrid Columns="4" Rows="1"/>
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <Border Style="{StaticResource CardStyle}" Margin="0,0,12,0">
+                        <StackPanel>
+                            <TextBlock Text="{Binding Name}" Style="{StaticResource KpiLabelStyle}"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,8">
+                                <TextBlock Text="{Binding Value, StringFormat=F2}" Style="{StaticResource KpiValueStyle}"/>
+                                <TextBlock Text="{Binding Unit}" Foreground="{StaticResource BrushTextSecondary}" FontSize="14" VerticalAlignment="Bottom" Margin="8,0,0,6"/>
+                            </StackPanel>
+                            <TextBlock Text="{Binding Timestamp, StringFormat=HH:mm:ss.fff}" Foreground="{StaticResource BrushTextSecondary}" FontSize="12"/>
+                        </StackPanel>
+                    </Border>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <!-- Trend + Point list -->
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2*"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Realtime trend -->
+            <Border Grid.Column="0" Style="{StaticResource CardStyle}" Margin="0,0,12,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Text="冷水机组功率实时趋势" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource BrushTextPrimary}" Margin="0,0,0,12"/>
+                    <scottplot:WpfPlot Grid.Row="1" x:Name="RealtimePlot"/>
+                </Grid>
+            </Border>
+
+            <!-- Point list -->
+            <Border Grid.Column="1" Style="{StaticResource CardStyle}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Text="实时点位" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource BrushTextPrimary}" Margin="0,0,0,12"/>
+                    <DataGrid Grid.Row="1" ItemsSource="{Binding PointValues}" Style="{StaticResource StyledDataGrid}" AutoGenerateColumns="False" IsReadOnly="True" BorderThickness="0">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="点位" Binding="{Binding Name}" Width="*"/>
+                            <DataGridTextColumn Header="值" Binding="{Binding Value, StringFormat=F2}" Width="80"/>
+                            <DataGridTextColumn Header="单位" Binding="{Binding Unit}" Width="60"/>
+                            <DataGridTextColumn Header="时间" Binding="{Binding Timestamp, StringFormat=HH:mm:ss}" Width="80"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- Alarm ticker -->
+        <Border Grid.Row="3" Style="{StaticResource AlarmTickerStyle}" Margin="0,16,0,0">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="最近报警" Foreground="{StaticResource BrushDanger}" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                <TextBlock Text="暂无未确认报警" Foreground="{StaticResource BrushTextSecondary}" VerticalAlignment="Center"/>
+            </StackPanel>
+        </Border>
     </Grid>
 </UserControl>

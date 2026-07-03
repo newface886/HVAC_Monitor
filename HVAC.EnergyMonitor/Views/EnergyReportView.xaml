@@ -1,7 +1,78 @@
 <UserControl x:Class="HVAC.EnergyMonitor.Views.EnergyReportView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:scottplot="clr-namespace:ScottPlot.WPF;assembly=ScottPlot.WPF"
+             xmlns:iconPacks="http://metro.mahapps.com/winfx/xaml/iconpacks">
     <Grid>
-        <TextBlock Text="能耗报表" FontSize="24" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Text="能耗报表" Style="{StaticResource PageTitleStyle}" Margin="0,0,0,16"/>
+
+        <!-- Toolbar -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,12">
+            <TextBlock Text="点位:" VerticalAlignment="Center" Foreground="{StaticResource BrushTextSecondary}" Margin="0,0,6,0"/>
+            <ComboBox ItemsSource="{Binding Points}" DisplayMemberPath="Name" SelectedValuePath="Id" SelectedValue="{Binding SelectedPointId}" Width="160" Margin="0,0,16,0" Padding="8,4"/>
+            <TextBlock Text="周期:" VerticalAlignment="Center" Foreground="{StaticResource BrushTextSecondary}" Margin="0,0,6,0"/>
+            <ComboBox SelectedItem="{Binding SelectedPeriod}" Width="100" Margin="0,0,16,0" Padding="8,4">
+                <ComboBox.ItemsSource>
+                    <x:Array Type="{x:Type sys:String}" xmlns:sys="clr-namespace:System;assembly=mscorlib">
+                        <sys:String>Hour</sys:String>
+                        <sys:String>Day</sys:String>
+                        <sys:String>Month</sys:String>
+                    </x:Array>
+                </ComboBox.ItemsSource>
+            </ComboBox>
+            <Button Style="{StaticResource ToolbarButtonStyle}" Content="查询" Command="{Binding QueryCommand}" Margin="0,0,8,0">
+                <Button.Tag>
+                    <iconPacks:PackIconMaterial Kind="Magnify" Width="16" Height="16"/>
+                </Button.Tag>
+            </Button>
+            <Button Style="{StaticResource ToolbarButtonStyle}" Content="导出" Command="{Binding ExportCommand}">
+                <Button.Tag>
+                    <iconPacks:PackIconMaterial Kind="Download" Width="16" Height="16"/>
+                </Button.Tag>
+            </Button>
+        </StackPanel>
+
+        <!-- Report table + pie chart -->
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="1.5*"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Style="{StaticResource CardStyle}" Margin="0,0,12,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Text="报表数据" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource BrushTextPrimary}" Margin="0,0,0,12"/>
+                    <DataGrid Grid.Row="1" ItemsSource="{Binding Reports}" Style="{StaticResource StyledDataGrid}" AutoGenerateColumns="False" IsReadOnly="True" BorderThickness="0">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="周期开始" Binding="{Binding PeriodStart}" Width="*"/>
+                            <DataGridTextColumn Header="周期结束" Binding="{Binding PeriodEnd}" Width="*"/>
+                            <DataGridTextColumn Header="累计值" Binding="{Binding TotalValue, StringFormat=F2}" Width="*"/>
+                            <DataGridTextColumn Header="单位" Binding="{Binding Unit}" Width="80"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </Border>
+
+            <Border Grid.Column="1" Style="{StaticResource CardStyle}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Text="能耗占比" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource BrushTextPrimary}" Margin="0,0,0,12"/>
+                    <scottplot:WpfPlot Grid.Row="1" x:Name="EnergyPiePlot"/>
+                </Grid>
+            </Border>
+        </Grid>
     </Grid>
 </UserControl>
