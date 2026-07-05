@@ -1,9 +1,11 @@
 using HVAC.EnergyMonitor.Infrastructure.DbContext;
+using HVAC.EnergyMonitor.Services.Sync;
 using Microsoft.EntityFrameworkCore;
 using NLog;
 using Prism.Ioc;
 using Prism.Modularity;
 using System;
+using System.Threading.Tasks;
 
 namespace HVAC.EnergyMonitor.Modules;
 
@@ -21,7 +23,36 @@ public class CoreModule : IModule
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "[CoreModule] 数据库初始化失败，应用将以降级模式启动: {Message}", ex.Message);
+            Logger.Error(ex, "[CoreModule] SQLite 数据库初始化失败: {Message}", ex.Message);
+        }
+
+        // SQL Server 镜像在后台任务启动，UI 不等待（避免 sync-over-async）
+        if (containerProvider.IsRegistered<ISqlServerSchemaManager>() ||
+            containerProvider.IsRegistered<IDataSyncService>())
+        {
+            _ = Task.Run(() => InitializeSqlServerAsync(containerProvider));
+        }
+    }
+
+    private static async Task InitializeSqlServerAsync(IContainerProvider containerProvider)
+    {
+        try
+        {
+            if (containerProvider.IsRegistered<ISqlServerSchemaManager>())
+            {
+                var schemaManager = containerProvider.Resolve<ISqlServerSchemaManager>();
+                await schemaManager.EnsureSchemaAsync().ConfigureAwait(false);
+            }
+
+            if (containerProvider.IsRegistered<IDataSyncService>())
+            {
+                var syncService = containerProvider.Resolve<IDataSyncService>();
+                await syncService.StartAsync().ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "[CoreModule] SQL Server 同步启动失败，应用以降级模式继续运行: {Message}", ex.Message);
         }
     }
 

@@ -44,7 +44,7 @@
 |-------------|----------|
 | UI 框架 | .NET 8 WPF |
 | MVVM 框架 | Prism.Unity 9 |
-| 数据库 | SQLite + Entity Framework Core 8 |
+| 数据库 | SQLite + Entity Framework Core 8（主库）<br>SQL Server 2019+（可选热备镜像） |
 | 工业通信 | NModbus 4 |
 | 趋势图表 | ScottPlot.WPF 5 |
 | 日志记录 | NLog |
@@ -139,10 +139,65 @@ dotnet publish HVAC.EnergyMonitor/HVAC.EnergyMonitor.csproj -c Release -o ./publ
 
 ## 配置说明
 
-- **数据库连接字符串**：位于 `Modules/CoreModule.cs` 中，默认使用本地文件 `hvac_energy_monitor.db`。
+- **数据库连接字符串**：位于 `HVAC.EnergyMonitor/appsettings.json`。
+  - `DefaultConnection`：SQLite 本地文件路径（默认 `hvac_energy_monitor.db`）
+  - `SqlServerConnection`：SQL Server 连接串（可选，未配置则禁用镜像）
+- **同步行为配置**（位于 `appsettings.json` 的 `AppSettings` 节）：
+  - `SyncEnabled`：`true`/`false` 是否启用 SQL Server 镜像
+  - `SyncIntervalSec`：同步轮询间隔（秒，默认 2）
+  - `SyncBatchSize`：每批同步最大行数（默认 500）
 - **通信模式切换**：在设备配置视图中，可将协议类型在 `Simulator`（仿真）与 `ModbusTCP`/`ModbusRTU` 之间切换。
 - **扫描周期**：按设备配置，默认 1000 ms。
 - **日志配置**：通过 `NLog.config` 控制文件与控制台输出级别。
+
+---
+
+## SQL Server 镜像
+
+应用支持将本地 SQLite 数据异步同步到 SQL Server 作为**只写热备镜像**。SQLite 仍是主库，应用不读 SQL Server；SQL Server 不可达时业务功能完全不受影响。
+
+### 启用步骤
+
+1. 确保本机或网络内有可用的 SQL Server 实例（开发环境推荐 `SQLEXPRESS`）
+2. 编辑 `HVAC.EnergyMonitor/appsettings.json`，填写 `ConnectionStrings.SqlServerConnection`，例如：
+   ```json
+   "SqlServerConnection": "Server=LAPTOP-BFI60JL1\\SQLEXPRESS;Database=hvacm_data;User Id=sa;Password=xxx;TrustServerCertificate=True;Encrypt=True;Connection Timeout=10;"
+   ```
+3. 确认 `AppSettings.SyncEnabled` 为 `true`（默认即 `true`）
+4. 重新构建并启动应用：
+   ```bash
+   dotnet build
+   dotnet run --project HVAC.EnergyMonitor
+   ```
+5. 启动时自动校验/建表 + 全量同步参考数据 + 启动增量同步
+
+### 同步范围
+
+| 表 | 同步 | 说明 |
+|---|------|------|
+| `PointValues` | ✅ | 实时采集数据（每 2 秒增量） |
+| `AlarmRecords` | ✅ | 报警事件 |
+| `Devices` | ✅ | 启动时全量一次 |
+| `Points` | ✅ | 启动时全量一次 |
+| `AlarmRules` | ✅ | 启动时全量一次 |
+| `SyncStates` | ❌ | 本地水位线，不同步 |
+
+### 工作原理
+
+- **水位线机制**：本地 `SyncStates` 表记录 `PointValues` / `AlarmRecords` 已同步的最大 RowId
+- **轮询 + 批量推送**：每 2 秒检查一次新行，按 `SyncBatchSize` 批量推送到 SQL Server
+- **保留 RowId**：使用 `SET IDENTITY_INSERT` 显式保留 SQLite 端 RowId，重启后无重复行
+- **事务包裹**：每次推送用 EF Core 事务保证 IDENTITY_INSERT + INSERT 原子性
+
+### 故障降级
+
+| 场景 | 应用行为 |
+|------|----------|
+| SQL Server 启动时不可达 | UI 正常打开，模拟数据正常滚动，日志显示 `SQL Server 不可达，跳过 schema 校验` |
+| SQL Server 运行时不可达 | UI 正常，每 2 秒日志 `Tick 失败 (连续 N 次)`，SQLite 数据继续累积 |
+| SQL Server 恢复 | 下一次 Tick 自动追上积压数据，无需重启 |
+| 删除 SQL Server 表 | 日志 `Schema 验证失败，缺失表: XXX`，需手动重建表（`EnsureCreated` 不支持增量建表） |
+| `SyncEnabled=false` | 跳过所有同步，业务功能与改造前一致 |
 
 ---
 

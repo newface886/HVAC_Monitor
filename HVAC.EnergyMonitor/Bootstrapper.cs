@@ -10,6 +10,7 @@ using HVAC.EnergyMonitor.Services.Common;
 using HVAC.EnergyMonitor.Services.Communication;
 using HVAC.EnergyMonitor.Services.Report;
 using HVAC.EnergyMonitor.Services.Storage;
+using HVAC.EnergyMonitor.Services.Sync;
 using HVAC.EnergyMonitor.Views;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -38,14 +39,15 @@ public class Bootstrapper : PrismBootstrapper
         containerRegistry.RegisterInstance<IConfiguration>(configuration);
 
         // 数据库（必须在 Shell 创建前注册，因为 MainWindowViewModel 依赖 IDialogService）
-        var connectionString = configuration.GetConnectionString("DefaultConnection")
+        // SQLite 工厂（保持原有 IDbContextFactory<AppDbContext> 注册）
+        var sqliteConnection = configuration.GetConnectionString("DefaultConnection")
             ?? "Data Source=hvac_energy_monitor.db";
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseSqlite(connectionString)
+        var sqliteOptions = new DbContextOptionsBuilder<AppDbContext>()
+            .UseSqlite(sqliteConnection)
             .Options;
-
-        containerRegistry.RegisterInstance(options);
-        containerRegistry.RegisterSingleton<IDbContextFactory<AppDbContext>, AppDbContextFactory>();
+        var sqliteFactory = new AppDbContextFactory(sqliteOptions);
+        containerRegistry.RegisterInstance(sqliteOptions);
+        containerRegistry.RegisterInstance<IDbContextFactory<AppDbContext>>(sqliteFactory);
 
         // Repository / UnitOfWork - Transient to avoid concurrent DbContext usage
         containerRegistry.Register<IUnitOfWork, UnitOfWork>();
@@ -71,6 +73,26 @@ public class Bootstrapper : PrismBootstrapper
         containerRegistry.RegisterForNavigation<HistoryTrendView>();
         containerRegistry.RegisterForNavigation<AlarmView>();
         containerRegistry.RegisterForNavigation<EnergyReportView>();
+
+        // SQL Server 镜像（仅当配置了 SqlServerConnection 时启用）
+        var sqlServerConnection = configuration.GetConnectionString("SqlServerConnection");
+        if (!string.IsNullOrWhiteSpace(sqlServerConnection))
+        {
+            // 关键：不注册为 IDbContextFactory<AppDbContext>，避免与 SQLite 工厂冲突
+            // 仅作为普通对象传给需要的服务
+            var sqlServerFactory = new SqlServerDbContextFactory(sqlServerConnection);
+            containerRegistry.RegisterInstance<ISqlServerSchemaManager>(
+                new SqlServerSchemaManager(sqlServerFactory));
+
+            // DataSyncService 需要两个工厂：SQLite 走 DI 解析，SQL Server 走闭包变量
+            // 用工厂委托而不是 RegisterSingleton<IDataSyncService, DataSyncService>()
+            // 因为后者无法注入 sqlServerFactory
+            containerRegistry.RegisterSingleton<IDataSyncService>(c =>
+                new DataSyncService(
+                    c.Resolve<IDbContextFactory<AppDbContext>>(),  // SQLite 工厂
+                    sqlServerFactory,                              // SQL Server 工厂
+                    c.Resolve<IConfiguration>()));
+        }
     }
 
     protected override void ConfigureModuleCatalog(IModuleCatalog moduleCatalog)

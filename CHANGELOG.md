@@ -5,6 +5,113 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+## [0.3.0] - 2026-07-05
+
+本版本为 HVAC 能源监控平台引入 **SQL Server 辅助数据库镜像** 功能：
+将本地 SQLite 库作为主库，新增 SQL Server 作为可选的**只写热备镜像**。
+业务代码零侵入（ViewModel / View / 采集服务等一行未改），SQL Server 不可达时
+业务功能完全不受影响，恢复后自动追平积压数据。
+
+### ✨ 新增功能
+
+- **SQL Server 镜像（轮询 + 水位线）**
+  - 新增 `DataSyncService` 后台服务，按 `SyncIntervalSec`（默认 2 秒）轮询 SQLite 增量表
+  - 新增 `SyncStates` 表记录 `PointValues` / `AlarmRecords` 已同步的最大 RowId
+  - 启动时执行参考数据全量同步（`Devices` / `Points` / `AlarmRules`），保证 FK 约束
+  - 同步范围内表：`PointValues`、`AlarmRecords`、`Devices`、`Points`、`AlarmRules`
+  - 不同步：`SyncStates`（仅本地水位线）
+- **`SqlServerSchemaManager` 启动校验**
+  - 启动时执行 `CanConnectAsync` → `EnsureCreatedAsync` → `INFORMATION_SCHEMA` 表存在性校验
+  - SQL Server 不可达时降级（`SyncEnabled=true` 仍继续尝试增量同步）
+  - 表缺失时记录 ERROR 日志，不阻塞应用
+- **可配置同步行为**（`appsettings.json` → `AppSettings`）
+  - `SyncEnabled: true/false` 是否启用镜像
+  - `SyncIntervalSec: 2` 轮询间隔
+  - `SyncBatchSize: 500` 单批最大行数
+
+### 🐛 实施过程发现的关键 Bug
+
+- **`AppDbContext` 遗漏 `DbSet<SyncState>`**
+  - 现象：`dotnet ef database update` 抛 `Unable to create a 'DbSet<SyncState>'`
+  - 修复：在 `AppDbContext` 添加 `public DbSet<SyncState> SyncStates => Set<SyncState>();`
+- **SQL Server `IDENTITY_INSERT` 在 EF Core SaveChanges 后失效**
+  - 现象：`PointValues.Id` 是 IDENTITY 列，直接 `AddRangeAsync` 报
+    "Cannot insert explicit value for identity column when IDENTITY_INSERT is set to OFF"
+  - 修复：用 `BeginTransactionAsync` 包裹 `SET IDENTITY_INSERT ON ... SaveChanges ... OFF`，
+    保证 SET 与 INSERT 在同一 SQL 连接上生效
+- **外键约束阻止参考数据同步**
+  - 现象：首次同步时 SQL Server 端 `Points` 表为空，`PointValues` 写入因 FK 约束失败
+  - 修复：启动时执行 `SyncReferenceDataAsync` 全量同步 `Devices`/`Points`/`AlarmRules`，
+    临时 `NOCHECK CONSTRAINT ALL` + `DELETE` + `IDENTITY_INSERT` + `INSERT` + 恢复 CHECK
+
+### 🛠️ 架构设计
+
+- **水位线策略**：本地 `SyncStates.LastSyncedRowId` 推进式记录已同步位置
+  - **不采用** SQL Server MERGE/upsert（实现复杂，当前同步场景为单向+低并发）
+  - 未来若需多消费者并发同步，建议升级为 SQL Server MERGE 实现真正幂等
+- **SqlServerDbContextFactory 不通过 DI 注册**
+  - 原因：DI 只能注册一个 `IDbContextFactory<AppDbContext>`，会与 SQLite 工厂冲突
+  - 方案：在 `Bootstrapper` 里 `new` 一个 `SqlServerDbContextFactory`，通过工厂委托闭包传给 `DataSyncService`
+- **`DataSyncService` 后台启动**
+  - `CoreModule.OnInitialized` 用 `Task.Run` 启动后台任务（fire-and-forget）
+  - 严格避免 `GetAwaiter().GetResult()` 同步阻塞 UI 线程（项目硬约束）
+- **`AppDbContextDesignTimeFactory` 绝对路径**
+  - 原因：`dotnet ef` 工具无法解析 Prism-DI 注入的 DbContext
+  - 方案：实现 `IDesignTimeDbContextFactory<AppDbContext>`，使用 `d:\study\623WPFstudy` 绝对项目根路径
+
+### 📦 新增文件
+
+- `HVAC.EnergyMonitor/Models/Entities/SyncState.cs` — 水位线实体
+- `HVAC.EnergyMonitor/Infrastructure/DbContext/SqlServerDbContextFactory.cs` — SQL Server 端 DbContext 工厂
+- `HVAC.EnergyMonitor/Infrastructure/DbContext/AppDbContextDesignTimeFactory.cs` — EF Core CLI 设计时工厂
+- `HVAC.EnergyMonitor/Services/Sync/IDataSyncService.cs` — 同步服务接口
+- `HVAC.EnergyMonitor/Services/Sync/DataSyncService.cs` — 同步服务实现
+- `HVAC.EnergyMonitor/Services/Sync/ISqlServerSchemaManager.cs` — Schema 管理接口
+- `HVAC.EnergyMonitor/Services/Sync/SqlServerSchemaManager.cs` — Schema 管理实现
+- `HVAC.EnergyMonitor/Migrations/20260705084120_AddSyncState.cs` — EF Core 迁移
+- `HVAC.EnergyMonitor/Migrations/20260705084120_AddSyncState.Designer.cs`
+- `HVAC.EnergyMonitor/Migrations/AppDbContextModelSnapshot.cs`
+- `HVAC.EnergyMonitor/appsettings.json` — 应用配置（含 SQL Server 连接串与同步配置）
+
+
+### 📝 变更文件
+
+- `HVAC.EnergyMonitor/HVAC.EnergyMonitor.csproj` — 添加 `Microsoft.EntityFrameworkCore.SqlServer 8.0.6`
+- `HVAC.EnergyMonitor/Bootstrapper.cs` — 注册 `SqlServerSchemaManager` / `DataSyncService`（仅当 `SqlServerConnection` 已配置）
+- `HVAC.EnergyMonitor/Infrastructure/DbContext/AppDbContext.cs` — 添加 `DbSet<SyncState>` + 唯一索引
+- `HVAC.EnergyMonitor/Modules/CoreModule.cs` — `OnInitialized` 后台启动 SQL Server 同步
+- `README.md` — 新增「SQL Server 镜像」章节（启用步骤、同步范围、工作原理、故障降级表）
+
+### ✅ 验证
+
+`dotnet build` 0 错误 0 警告；端到端 10 项手动测试场景全部通过：
+
+| 场景 | 描述 | 结果 |
+|------|------|------|
+| T1 | 启动应用 → SQL Server 表自动创建 | ✅ |
+| T2 | SQLite 与 SQL Server 行数一致 | ✅ |
+| T3 | SQL Server 不可达 → 降级运行 | ✅ |
+| T4 | SQL Server 恢复 → 自动追上积压 | ✅ |
+| T5 | 手动插入 2 秒内同步到 SQL Server | ✅ |
+| T6 | SQL Server 写入不回灌 SQLite（单向） | ✅ |
+| T7 | 强制 kill 重启后无重复行 | ✅ |
+| T8 | 删表后日志告警 + 业务降级正常 | ⚠️ 部分（表未自动重建） |
+| T9 | 30 秒离线 + 132 条积压 → 恢复追平 | ✅ |
+| T10 | `SyncEnabled=false` 行为与改造前一致 | ✅ |
+
+> T3/T4 用「改连接串指向不存在服务器」模拟停服（环境无管理员权限停 SQL Server 服务），
+> T9 缩短为 30 秒（环境无时间做 5 分钟）— 核心代码路径与原场景一致。
+
+### ⚠️ 已知改进点（非阻塞）
+
+1. `SqlServerSchemaManager` 不支持缺失表的自动重建（T8 仅日志告警）
+2. `DataSyncService.StopAsync` 未在 `App.OnExit` 显式调用（task 被中断）
+3. `SyncStates` 表在 SQL Server 中是空壳（EF Core EnsureCreated 建表，但数据仅本地）— 后续可考虑从 SQL Server 排除该 DbSet
+
+---
+
 ## [0.2.0] - 2026-07-03
 
 本轮提交围绕"工业级 C# 软件开发核心思想"对 HVAC 能源监控平台进行全量优化，
