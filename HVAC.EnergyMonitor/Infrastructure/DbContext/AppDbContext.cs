@@ -14,6 +14,7 @@ public class AppDbContext : Microsoft.EntityFrameworkCore.DbContext
     public DbSet<PointValue> PointValues => Set<PointValue>();
     public DbSet<AlarmRule> AlarmRules => Set<AlarmRule>();
     public DbSet<AlarmRecord> AlarmRecords => Set<AlarmRecord>();
+    public DbSet<SyncState> SyncStates => Set<SyncState>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
