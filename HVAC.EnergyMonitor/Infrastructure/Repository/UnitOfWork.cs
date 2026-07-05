@@ -1,4 +1,5 @@
 using HVAC.EnergyMonitor.Infrastructure.DbContext;
+using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Concurrent;
 using System.Threading.Tasks;
@@ -10,9 +11,9 @@ public class UnitOfWork : IUnitOfWork, IDisposable
     private readonly AppDbContext _context;
     private readonly ConcurrentDictionary<Type, object> _repositories = new();
 
-    public UnitOfWork(AppDbContext context)
+    public UnitOfWork(IDbContextFactory<AppDbContext> dbContextFactory)
     {
-        _context = context;
+        _context = dbContextFactory.CreateDbContext();
     }
 
     public IRepository<T> Repository<T>() where T : class

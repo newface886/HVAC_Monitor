@@ -74,8 +74,7 @@
 - `HVAC.EnergyMonitor/Migrations/20260705084120_AddSyncState.Designer.cs`
 - `HVAC.EnergyMonitor/Migrations/AppDbContextModelSnapshot.cs`
 - `HVAC.EnergyMonitor/appsettings.json` — 应用配置（含 SQL Server 连接串与同步配置）
-- `docs/superpowers/plans/2026-07-05-sqlserver-auxiliary-db.md` — 实施计划
-- `docs/superpowers/specs/2026-07-05-sqlserver-auxiliary-db-design.md` — 设计文档
+
 
 ### 📝 变更文件
 

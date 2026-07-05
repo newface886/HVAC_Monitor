@@ -5,12 +5,13 @@ using System.Threading.Tasks;
 
 namespace HVAC.EnergyMonitor.Services.Communication;
 
-public class ModbusTcpCommunicationService : ICommunicationService
+public class ModbusTcpCommunicationService : ICommunicationService, IDisposable
 {
     private string _ipAddress = "127.0.0.1";
     private int _port = 502;
     private TcpClient? _tcpClient;
     private bool _connected;
+    private bool _disposed;
 
     public string Name => "ModbusTCP";
     public bool IsConnected => _connected && _tcpClient?.Connected == true;
@@ -23,11 +24,13 @@ public class ModbusTcpCommunicationService : ICommunicationService
 
     public async Task<bool> ConnectAsync(CancellationToken ct = default)
     {
+        if (_disposed) return false;
+
         try
         {
-            _tcpClient?.Dispose();
+            DisconnectInternal();
             _tcpClient = new TcpClient();
-            await _tcpClient.ConnectAsync(_ipAddress, _port);
+            await _tcpClient.ConnectAsync(_ipAddress, _port).ConfigureAwait(false);
             _connected = true;
             return true;
         }
@@ -40,10 +43,7 @@ public class ModbusTcpCommunicationService : ICommunicationService
 
     public Task DisconnectAsync(CancellationToken ct = default)
     {
-        _connected = false;
-        _tcpClient?.Close();
-        _tcpClient?.Dispose();
-        _tcpClient = null;
+        DisconnectInternal();
         return Task.CompletedTask;
     }
 
@@ -55,5 +55,21 @@ public class ModbusTcpCommunicationService : ICommunicationService
     public Task<ushort[]> ReadInputRegistersAsync(int slaveAddress, int startAddress, int count, CancellationToken ct = default)
     {
         throw new NotImplementedException("Real Modbus TCP integration pending. Use Simulator for now.");
+    }
+
+    private void DisconnectInternal()
+    {
+        _connected = false;
+        _tcpClient?.Close();
+        _tcpClient?.Dispose();
+        _tcpClient = null;
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        DisconnectInternal();
+        GC.SuppressFinalize(this);
     }
 }
