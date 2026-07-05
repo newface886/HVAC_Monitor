@@ -26,7 +26,16 @@ bld/
 .idea/
 
 # Database files (optional, keep if you want to commit seed DB)
-# *.db
+*.db
+*.db-shm
+*.db-wal
+
+# Application runtime logs
+app_stdout.log
+app_stderr.log
+
+# Test tool local config
+SqlServerTest/appsettings.json
 
 # Others
 *.swp
