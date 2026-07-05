@@ -44,24 +44,120 @@ public class DataSyncService : IDataSyncService
         _batchSize = Math.Max(1, appSettings.GetValue<int>("SyncBatchSize", 500));
     }
 
-    public Task StartAsync(CancellationToken ct = default)
+    public async Task StartAsync(CancellationToken ct = default)
     {
         if (!_enabled)
         {
             Logger.Info("[DataSyncService] SyncEnabled=false, 同步未启动");
-            return Task.CompletedTask;
+            return;
         }
         if (_loopTask != null)
         {
             Logger.Warn("[DataSyncService] 已经在运行中，忽略重复 Start");
-            return Task.CompletedTask;
+            return;
+        }
+
+        // 启动前先做一次参考数据全量同步（Devices/Points/AlarmRules）
+        // 不然 PointValues 写入会因 FK 约束失败
+        try
+        {
+            await SyncReferenceDataAsync(ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "[DataSyncService] 参考数据同步失败，继续启动增量同步: {Message}", ex.Message);
         }
 
         _cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         _loopTask = Task.Run(() => RunLoopAsync(_cts.Token));
         Logger.Info("[DataSyncService] 已启动: interval={IntervalSec}s, batchSize={BatchSize}",
             _intervalSec, _batchSize);
-        return Task.CompletedTask;
+    }
+
+    private async Task SyncReferenceDataAsync(CancellationToken ct)
+    {
+        // 读取 SQLite 端所有参考数据
+        List<Device> devices;
+        List<Point> points;
+        List<AlarmRule> alarmRules;
+        using (var sqliteCtx = _sqliteFactory.CreateDbContext())
+        {
+            devices = await sqliteCtx.Devices.AsNoTracking().ToListAsync(ct).ConfigureAwait(false);
+            points = await sqliteCtx.Points.AsNoTracking().ToListAsync(ct).ConfigureAwait(false);
+            alarmRules = await sqliteCtx.AlarmRules.AsNoTracking().ToListAsync(ct).ConfigureAwait(false);
+        }
+
+        if (devices.Count == 0 && points.Count == 0 && alarmRules.Count == 0)
+        {
+            Logger.Info("[DataSyncService] SQLite 无参考数据，跳过参考数据同步");
+            return;
+        }
+
+        using var sqlCtx = _sqlServerFactory.CreateDbContext();
+        sqlCtx.Database.SetCommandTimeout(TimeSpan.FromSeconds(30));
+        using var tx = await sqlCtx.Database.BeginTransactionAsync(ct).ConfigureAwait(false);
+        try
+        {
+            // 临时禁用 FK 约束，避免删除/插入顺序问题
+            await sqlCtx.Database.ExecuteSqlRawAsync(
+                "ALTER TABLE dbo.AlarmRules NOCHECK CONSTRAINT ALL", ct).ConfigureAwait(false);
+            await sqlCtx.Database.ExecuteSqlRawAsync(
+                "ALTER TABLE dbo.AlarmRecords NOCHECK CONSTRAINT ALL", ct).ConfigureAwait(false);
+            await sqlCtx.Database.ExecuteSqlRawAsync(
+                "ALTER TABLE dbo.PointValues NOCHECK CONSTRAINT ALL", ct).ConfigureAwait(false);
+
+            // 清空参考表（按依赖反序：AlarmRules → Points → Devices）
+            await sqlCtx.Database.ExecuteSqlRawAsync("DELETE FROM dbo.AlarmRules", ct).ConfigureAwait(false);
+            await sqlCtx.Database.ExecuteSqlRawAsync("DELETE FROM dbo.Points", ct).ConfigureAwait(false);
+            await sqlCtx.Database.ExecuteSqlRawAsync("DELETE FROM dbo.Devices", ct).ConfigureAwait(false);
+
+            // 重新插入（按依赖正序：Devices → Points → AlarmRules），保留 SQLite RowId
+            if (devices.Count > 0)
+            {
+                await sqlCtx.Database.ExecuteSqlRawAsync(
+                    "SET IDENTITY_INSERT dbo.Devices ON", ct).ConfigureAwait(false);
+                await sqlCtx.Devices.AddRangeAsync(devices, ct).ConfigureAwait(false);
+                await sqlCtx.SaveChangesAsync(ct).ConfigureAwait(false);
+                await sqlCtx.Database.ExecuteSqlRawAsync(
+                    "SET IDENTITY_INSERT dbo.Devices OFF", ct).ConfigureAwait(false);
+            }
+            if (points.Count > 0)
+            {
+                await sqlCtx.Database.ExecuteSqlRawAsync(
+                    "SET IDENTITY_INSERT dbo.Points ON", ct).ConfigureAwait(false);
+                await sqlCtx.Points.AddRangeAsync(points, ct).ConfigureAwait(false);
+                await sqlCtx.SaveChangesAsync(ct).ConfigureAwait(false);
+                await sqlCtx.Database.ExecuteSqlRawAsync(
+                    "SET IDENTITY_INSERT dbo.Points OFF", ct).ConfigureAwait(false);
+            }
+            if (alarmRules.Count > 0)
+            {
+                await sqlCtx.Database.ExecuteSqlRawAsync(
+                    "SET IDENTITY_INSERT dbo.AlarmRules ON", ct).ConfigureAwait(false);
+                await sqlCtx.AlarmRules.AddRangeAsync(alarmRules, ct).ConfigureAwait(false);
+                await sqlCtx.SaveChangesAsync(ct).ConfigureAwait(false);
+                await sqlCtx.Database.ExecuteSqlRawAsync(
+                    "SET IDENTITY_INSERT dbo.AlarmRules OFF", ct).ConfigureAwait(false);
+            }
+
+            // 恢复 FK 约束
+            await sqlCtx.Database.ExecuteSqlRawAsync(
+                "ALTER TABLE dbo.PointValues WITH CHECK CHECK CONSTRAINT ALL", ct).ConfigureAwait(false);
+            await sqlCtx.Database.ExecuteSqlRawAsync(
+                "ALTER TABLE dbo.AlarmRecords WITH CHECK CHECK CONSTRAINT ALL", ct).ConfigureAwait(false);
+            await sqlCtx.Database.ExecuteSqlRawAsync(
+                "ALTER TABLE dbo.AlarmRules WITH CHECK CHECK CONSTRAINT ALL", ct).ConfigureAwait(false);
+
+            await tx.CommitAsync(ct).ConfigureAwait(false);
+        }
+        catch
+        {
+            await tx.RollbackAsync(ct).ConfigureAwait(false);
+            throw;
+        }
+
+        Logger.Info("[DataSyncService] 参考数据同步完成: Devices={Dc}, Points={Pc}, AlarmRules={Ac}",
+            devices.Count, points.Count, alarmRules.Count);
     }
 
     public async Task StopAsync(CancellationToken ct = default)
@@ -133,15 +229,36 @@ public class DataSyncService : IDataSyncService
         using (var sqlCtx = _sqlServerFactory.CreateDbContext())
         {
             sqlCtx.Database.SetCommandTimeout(TimeSpan.FromSeconds(30));
-            if (newPointValues.Count > 0)
+            // 事务包裹 IDENTITY_INSERT + INSERT，保证 SET 在 SaveChanges 同一连接上生效
+            using var tx = await sqlCtx.Database.BeginTransactionAsync(ct).ConfigureAwait(false);
+            try
             {
-                await sqlCtx.PointValues.AddRangeAsync(newPointValues, ct).ConfigureAwait(false);
+                if (newPointValues.Count > 0)
+                {
+                    // 同步保留 SQLite 端 RowId，必须用 IDENTITY_INSERT 显式赋值
+                    await sqlCtx.Database.ExecuteSqlRawAsync(
+                        "SET IDENTITY_INSERT dbo.PointValues ON", ct).ConfigureAwait(false);
+                    await sqlCtx.PointValues.AddRangeAsync(newPointValues, ct).ConfigureAwait(false);
+                    await sqlCtx.SaveChangesAsync(ct).ConfigureAwait(false);
+                    await sqlCtx.Database.ExecuteSqlRawAsync(
+                        "SET IDENTITY_INSERT dbo.PointValues OFF", ct).ConfigureAwait(false);
+                }
+                if (newAlarmRecords.Count > 0)
+                {
+                    await sqlCtx.Database.ExecuteSqlRawAsync(
+                        "SET IDENTITY_INSERT dbo.AlarmRecords ON", ct).ConfigureAwait(false);
+                    await sqlCtx.AlarmRecords.AddRangeAsync(newAlarmRecords, ct).ConfigureAwait(false);
+                    await sqlCtx.SaveChangesAsync(ct).ConfigureAwait(false);
+                    await sqlCtx.Database.ExecuteSqlRawAsync(
+                        "SET IDENTITY_INSERT dbo.AlarmRecords OFF", ct).ConfigureAwait(false);
+                }
+                await tx.CommitAsync(ct).ConfigureAwait(false);
             }
-            if (newAlarmRecords.Count > 0)
+            catch
             {
-                await sqlCtx.AlarmRecords.AddRangeAsync(newAlarmRecords, ct).ConfigureAwait(false);
+                await tx.RollbackAsync(ct).ConfigureAwait(false);
+                throw;
             }
-            await sqlCtx.SaveChangesAsync(ct).ConfigureAwait(false);
         }
 
         var newPvId = newPointValues.Count > 0 ? newPointValues.Max(v => v.Id) : watermarks[TablePointValues];
