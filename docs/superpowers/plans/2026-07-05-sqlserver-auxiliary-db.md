@@ -1189,6 +1189,10 @@ services.msc
 
 ## Task 13: 更新 README
 
+**Status: ✅ COMPLETED (2026-07-05 17:44)**
+- README.md 增加了「SQL Server 镜像」章节（启用步骤、同步范围、工作原理、故障降级表）
+- 功能特性、技术栈、配置说明三处都补充了 SQL Server 镜像相关内容
+
 **Files:**
 - Modify: `README.md`
 
