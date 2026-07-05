@@ -83,6 +83,15 @@ public class Bootstrapper : PrismBootstrapper
             var sqlServerFactory = new SqlServerDbContextFactory(sqlServerConnection);
             containerRegistry.RegisterInstance<ISqlServerSchemaManager>(
                 new SqlServerSchemaManager(sqlServerFactory));
+
+            // DataSyncService 需要两个工厂：SQLite 走 DI 解析，SQL Server 走闭包变量
+            // 用工厂委托而不是 RegisterSingleton<IDataSyncService, DataSyncService>()
+            // 因为后者无法注入 sqlServerFactory
+            containerRegistry.RegisterSingleton<IDataSyncService>(c =>
+                new DataSyncService(
+                    c.Resolve<IDbContextFactory<AppDbContext>>(),  // SQLite 工厂
+                    sqlServerFactory,                              // SQL Server 工厂
+                    c.Resolve<IConfiguration>()));
         }
     }
 
