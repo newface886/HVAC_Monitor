@@ -64,5 +64,15 @@ public class AppDbContext : Microsoft.EntityFrameworkCore.DbContext
                   .HasForeignKey(e => e.PointId)
                   .OnDelete(DeleteBehavior.Cascade);
         });
+
+        modelBuilder.Entity<SyncState>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.TableName)
+                  .HasMaxLength(50)
+                  .IsRequired();
+            entity.HasIndex(e => e.TableName)
+                  .IsUnique();
+        });
     }
 }
