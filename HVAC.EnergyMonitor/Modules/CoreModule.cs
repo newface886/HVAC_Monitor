@@ -1,50 +1,68 @@
 using HVAC.EnergyMonitor.Infrastructure.DbContext;
-using HVAC.EnergyMonitor.Infrastructure.Repository;
-using HVAC.EnergyMonitor.Services.Acquisition;
-using HVAC.EnergyMonitor.Services.Alarm;
-using HVAC.EnergyMonitor.Services.Cache;
-using HVAC.EnergyMonitor.Services.Communication;
-using HVAC.EnergyMonitor.Services.Report;
-using HVAC.EnergyMonitor.Services.Storage;
+using HVAC.EnergyMonitor.Services.Sync;
 using Microsoft.EntityFrameworkCore;
+using NLog;
 using Prism.Ioc;
 using Prism.Modularity;
+using System;
+using System.Threading.Tasks;
 
 namespace HVAC.EnergyMonitor.Modules;
 
 public class CoreModule : IModule
 {
+    private static readonly ILogger Logger = LogManager.GetCurrentClassLogger();
+
     public void OnInitialized(IContainerProvider containerProvider)
     {
+        try
+        {
+            using var context = containerProvider.Resolve<IDbContextFactory<AppDbContext>>().CreateDbContext();
+            context.Database.EnsureCreated();
+            SeedData(context);
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "[CoreModule] SQLite 数据库初始化失败: {Message}", ex.Message);
+        }
+
+        // SQL Server 镜像在后台任务启动，UI 不等待（避免 sync-over-async）
+        if (containerProvider.IsRegistered<ISqlServerSchemaManager>() ||
+            containerProvider.IsRegistered<IDataSyncService>())
+        {
+            _ = Task.Run(() => InitializeSqlServerAsync(containerProvider));
+        }
+    }
+
+    private static async Task InitializeSqlServerAsync(IContainerProvider containerProvider)
+    {
+        try
+        {
+            if (containerProvider.IsRegistered<ISqlServerSchemaManager>())
+            {
+                var schemaManager = containerProvider.Resolve<ISqlServerSchemaManager>();
+                await schemaManager.EnsureSchemaAsync().ConfigureAwait(false);
+            }
+
+            if (containerProvider.IsRegistered<IDataSyncService>())
+            {
+                var syncService = containerProvider.Resolve<IDataSyncService>();
+                await syncService.StartAsync().ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "[CoreModule] SQL Server 同步启动失败，应用以降级模式继续运行: {Message}", ex.Message);
+        }
     }
 
     public void RegisterTypes(IContainerRegistry containerRegistry)
     {
-        // DbContext
-        var connectionString = "Data Source=hvac_energy_monitor.db";
-        containerRegistry.RegisterSingleton<AppDbContext>(() =>
-        {
-            var options = new DbContextOptionsBuilder<AppDbContext>()
-                .UseSqlite(connectionString)
-                .Options;
-            var context = new AppDbContext(options);
-            context.Database.EnsureCreated();
-            SeedData(context);
-            return context;
-        });
-
-        // Repository / UnitOfWork
-        containerRegistry.RegisterSingleton<IUnitOfWork, UnitOfWork>();
-
-        // Services
-        containerRegistry.RegisterSingleton<IPointValueCache, PointValueCache>();
-        containerRegistry.RegisterSingleton<IDataStorageService, DataStorageService>();
-        containerRegistry.RegisterSingleton<IAlarmService, AlarmService>();
-        containerRegistry.RegisterSingleton<IEnergyReportService, EnergyReportService>();
-        containerRegistry.RegisterSingleton<IDataAcquisitionService, DataAcquisitionService>();
+        // 服务注册已移至 Bootstrapper.RegisterTypes
+        // 原因：Prism 9 模块加载在 Shell 创建之后，导致 MainWindowViewModel 解析时服务未注册
     }
 
-    private static void SeedData(AppDbContext context)
+    private static void SeedData(Infrastructure.DbContext.AppDbContext context)
     {
         if (context.Devices.Any()) return;
 
