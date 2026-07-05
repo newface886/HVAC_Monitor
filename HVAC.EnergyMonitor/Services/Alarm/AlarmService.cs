@@ -16,13 +16,12 @@ public class AlarmService : IAlarmService
     public event EventHandler<AlarmEventArgs>? AlarmTriggered;
 
     private readonly IUnitOfWork _unitOfWork;
-    private readonly ILogger _logger;
+    private static readonly ILogger Logger = LogManager.GetCurrentClassLogger();
     private readonly HashSet<string> _activeAlarms = new();
 
-    public AlarmService(IUnitOfWork unitOfWork, ILogger logger)
+    public AlarmService(IUnitOfWork unitOfWork)
     {
         _unitOfWork = unitOfWork;
-        _logger = logger;
     }
 
     public async Task CheckAsync(PointValueCacheItem value)
@@ -69,6 +68,8 @@ public class AlarmService : IAlarmService
 
         await _unitOfWork.Repository<AlarmRecord>().AddAsync(record);
         await _unitOfWork.SaveChangesAsync();
+        Logger.Warn("Alarm triggered: Point {PointId} {AlarmType} value {TriggerValue} exceeds limit {LimitValue}",
+            record.PointId, record.AlarmType, record.TriggerValue, record.LimitValue);
         AlarmTriggered?.Invoke(this, new AlarmEventArgs(record));
     }
 

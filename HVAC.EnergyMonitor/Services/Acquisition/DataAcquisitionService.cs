@@ -23,7 +23,7 @@ public class DataAcquisitionService : IDataAcquisitionService
     private readonly IPointValueCache _cache;
     private readonly IDataStorageService _storage;
     private readonly IEventAggregator _eventAggregator;
-    private readonly ILogger _logger;
+    private static readonly ILogger Logger = LogManager.GetCurrentClassLogger();
     private readonly Dictionary<int, ICommunicationService> _communicationServices = new();
     private CancellationTokenSource? _cts;
     private Task? _runningTask;
@@ -34,14 +34,12 @@ public class DataAcquisitionService : IDataAcquisitionService
         AppDbContext context,
         IPointValueCache cache,
         IDataStorageService storage,
-        IEventAggregator eventAggregator,
-        ILogger logger)
+        IEventAggregator eventAggregator)
     {
         _context = context;
         _cache = cache;
         _storage = storage;
         _eventAggregator = eventAggregator;
-        _logger = logger;
     }
 
     public async Task StartAsync(CancellationToken ct = default)
@@ -90,9 +88,13 @@ public class DataAcquisitionService : IDataAcquisitionService
                     await ProcessDeviceAsync(device, ct);
                 }
             }
+            catch (OperationCanceledException)
+            {
+                // normal shutdown
+            }
             catch (Exception ex)
             {
-                _logger.Error(ex, "[DataAcquisitionService] {Message}", ex.Message);
+                Logger.Error(ex, "[DataAcquisitionService] {Message}", ex.Message);
             }
 
             await Task.Delay(1000, ct);
@@ -138,7 +140,7 @@ public class DataAcquisitionService : IDataAcquisitionService
             }
             catch (Exception ex)
             {
-                _logger.Warn(ex, "[ProcessDevice] Point {PointName}: {Message}", point.Name, ex.Message);
+                Logger.Warn(ex, "[ProcessDevice] Point {PointName}: {Message}", point.Name, ex.Message);
             }
         }
     }

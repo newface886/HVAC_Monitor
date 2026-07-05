@@ -1,3 +1,4 @@
+using System.IO;
 using System.Windows;
 using NLog;
 
@@ -8,7 +9,11 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
-        LogManager.Setup().LoadConfigurationFromFile("NLog.config");
+        var configPath = "NLog.config";
+        if (File.Exists(configPath))
+        {
+            LogManager.Setup().LoadConfigurationFromFile(configPath);
+        }
         var bootstrapper = new Bootstrapper();
         bootstrapper.Run();
     }

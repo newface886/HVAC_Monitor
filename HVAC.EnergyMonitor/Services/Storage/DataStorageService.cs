@@ -12,15 +12,14 @@ namespace HVAC.EnergyMonitor.Services.Storage;
 public class DataStorageService : IDataStorageService, IDisposable
 {
     private readonly IUnitOfWork _unitOfWork;
-    private readonly ILogger _logger;
+    private static readonly ILogger Logger = LogManager.GetCurrentClassLogger();
     private readonly ConcurrentQueue<PointValue> _buffer = new();
     private readonly Timer _flushTimer;
     private const int MaxBatchSize = 100;
 
-    public DataStorageService(IUnitOfWork unitOfWork, ILogger logger)
+    public DataStorageService(IUnitOfWork unitOfWork)
     {
         _unitOfWork = unitOfWork;
-        _logger = logger;
         _flushTimer = new Timer(_ => _ = FlushAsync(), null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
     }
 
@@ -51,7 +50,7 @@ public class DataStorageService : IDataStorageService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.Error(ex, "[DataStorageService] Flush failed: {Message}", ex.Message);
+            Logger.Error(ex, "[DataStorageService] Flush failed: {Message}", ex.Message);
         }
     }
 
